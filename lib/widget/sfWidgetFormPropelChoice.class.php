@@ -75,47 +75,66 @@ class sfWidgetFormPropelChoice extends sfWidgetFormChoice
   public function getChoices()
   {
     $choices = array();
-    if (false !== $this->getOption('add_empty'))
-    {
-      $choices[''] = true === $this->getOption('add_empty') ? '' : $this->getOption('add_empty');
-    }
 
-    $criteria = PropelQuery::from($this->getOption('model'));
-    if ($this->getOption('criteria'))
-    {
-      $criteria->mergeWith($this->getOption('criteria'));
-    }
-    foreach ((array)$this->getOption('query_methods') as $methodName => $methodParams)
-    {
-      if(is_array($methodParams))
+    if ('doSelect' !== $this->getOption('peer_method')) {
+
+      /* Vecchia logica usata in propel 1.4 per il peer_method, rimessa per compatibilità */
+
+      if (false !== $this->getOption('add_empty'))
       {
-        $criteria = call_user_func_array(array($criteria, $methodName), $methodParams);
+        $choices[''] = true === $this->getOption('add_empty') ? '' : $this->translate($this->getOption('add_empty'));
       }
-      else
+
+      $class = constant($this->getOption('model').'::PEER');
+
+      $criteria = null === $this->getOption('criteria') ? new Criteria() : clone $this->getOption('criteria');
+      if ($order = $this->getOption('order_by'))
       {
-        $criteria = $criteria->$methodParams();
+        $method = sprintf('add%sOrderByColumn', 0 === strpos(strtoupper($order[1]), 'ASC') ? 'Ascending' : 'Descending');
+        $criteria->$method(call_user_func(array($class, 'translateFieldName'), $order[0], BasePeer::TYPE_PHPNAME, BasePeer::TYPE_COLNAME));
       }
+      $objects = call_user_func(array($class, $this->getOption('peer_method')), $criteria, $this->getOption('connection'));
+
+
+    } else {
+
+      /* Nuova logica usata da propel 1.5 con peer_method non utilizzato più */
+
+      if (false !== $this->getOption('add_empty')) {
+        $choices[''] = true === $this->getOption('add_empty') ? '' : $this->getOption('add_empty');
+      }
+
+      $criteria = PropelQuery::from($this->getOption('model'));
+      if ($this->getOption('criteria')) {
+        $criteria->mergeWith($this->getOption('criteria'));
+      }
+      foreach ((array)$this->getOption('query_methods') as $methodName => $methodParams) {
+        if (is_array($methodParams)) {
+          $criteria = call_user_func_array(array($criteria, $methodName), $methodParams);
+        } else {
+          $criteria = $criteria->$methodParams();
+        }
+      }
+      if ($order = $this->getOption('order_by')) {
+        $criteria->orderBy($order[0], $order[1]);
+      }
+      $objects = $criteria->find($this->getOption('connection'));
+
+
     }
-    if ($order = $this->getOption('order_by'))
-    {
-      $criteria->orderBy($order[0], $order[1]);
-    }
-    $objects = $criteria->find($this->getOption('connection'));
 
     $methodKey = $this->getOption('key_method');
-    if (!method_exists($this->getOption('model'), $methodKey))
-    {
-      throw new RuntimeException(sprintf('Class "%s" must implement a "%s" method to be rendered in a "%s" widget', $this->getOption('model'), $methodKey, __CLASS__));
+    if (!method_exists($this->getOption('model'), $methodKey)) {
+      throw new RuntimeException(sprintf('Class "%s" must implement a "%s" method to be rendered in a "%s" widget',
+        $this->getOption('model'), $methodKey, __CLASS__));
     }
 
     $methodValue = $this->getOption('method');
-    if (!method_exists($this->getOption('model'), $methodValue))
-    {
-      throw new RuntimeException(sprintf('Class "%s" must implement a "%s" method to be rendered in a "%s" widget', $this->getOption('model'), $methodValue, __CLASS__));
+    if (!method_exists($this->getOption('model'), $methodValue)) {
+      throw new RuntimeException(sprintf('Class "%s" must implement a "%s" method to be rendered in a "%s" widget',
+        $this->getOption('model'), $methodValue, __CLASS__));
     }
-
-    foreach ($objects as $object)
-    {
+    foreach ($objects as $object) {
       $choices[$object->$methodKey()] = $object->$methodValue();
     }
 
